@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atari-style Pong Game with Sound</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #000;
+            overflow: hidden;
+        }
+        #gameCanvas {
+            border: 2px solid #fff;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const GAME_WIDTH = 640;
+        const GAME_HEIGHT = 480;
+        const PIXEL_SIZE = 4;
+        const PADDLE_WIDTH = 4;
+        const PADDLE_HEIGHT = 24;
+        const BALL_SIZE = 4;
+        const PADDLE_SPEED = 4;
+        const BALL_SPEED = 2;
+
+        canvas.width = GAME_WIDTH;
+        canvas.height = GAME_HEIGHT;
+
+        let paddleA = { x: 20, y: GAME_HEIGHT / 2 - PADDLE_HEIGHT / 2 };
+        let paddleB = { x: GAME_WIDTH - 20 - PADDLE_WIDTH, y: GAME_HEIGHT / 2 - PADDLE_HEIGHT / 2 };
+        let ball = { x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2, dx: BALL_SPEED, dy: BALL_SPEED };
+        let scoreA = 0;
+        let scoreB = 0;
+
+        // Audio context setup
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+        function playSound(frequency, duration) {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.type = 'square';
+            oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+            
+            gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            oscillator.start();
+            oscillator.stop(audioContext.currentTime + duration);
+        }
+
+        function playPaddleHitSound() {
+            playSound(150, 0.1);  // Lower frequency for paddle hit
+        }
+
+        function playWallHitSound() {
+            playSound(200, 0.1);  // Higher frequency for wall hit
+        }
+
+        function drawPixel(x, y, width, height) {
+            ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, width * PIXEL_SIZE, height * PIXEL_SIZE);
+        }
+
+        function drawPaddle(x, y) {
+            for (let i = 0; i < PADDLE_HEIGHT / PIXEL_SIZE; i++) {
+                drawPixel(x / PIXEL_SIZE, y / PIXEL_SIZE + i, PADDLE_WIDTH / PIXEL_SIZE, 1);
+            }
+        }
+
+        function drawBall(x, y) {
+            drawPixel(x / PIXEL_SIZE, y / PIXEL_SIZE, BALL_SIZE / PIXEL_SIZE, BALL_SIZE / PIXEL_SIZE);
+        }
+
+        function drawScore() {
+            ctx.font = '20px Arial';
+            ctx.fillText(scoreA, GAME_WIDTH / 4, 30);
+            ctx.fillText(scoreB, 3 * GAME_WIDTH / 4, 30);
+        }
+
+        function drawDottedLine() {
+            for (let i = 0; i < GAME_HEIGHT; i += 16) {
+                drawPixel(GAME_WIDTH / PIXEL_SIZE / 2 - 1, i / PIXEL_SIZE, 2, 4);
+            }
+        }
+
+        function update() {
+            // Update paddle A (player)
+            if (keys.ArrowUp && paddleA.y > 0) {
+                paddleA.y -= PADDLE_SPEED;
+            }
+            if (keys.ArrowDown && paddleA.y < GAME_HEIGHT - PADDLE_HEIGHT) {
+                paddleA.y += PADDLE_SPEED;
+            }
+
+            // Update paddle B (AI)
+            let paddleBCenter = paddleB.y + PADDLE_HEIGHT / 2;
+            if (paddleBCenter < ball.y - PADDLE_HEIGHT / 4) {
+                paddleB.y += PADDLE_SPEED / 2;
+            } else if (paddleBCenter > ball.y + PADDLE_HEIGHT / 4) {
+                paddleB.y -= PADDLE_SPEED / 2;
+            }
+
+            // Update ball position
+            ball.x += ball.dx;
+            ball.y += ball.dy;
+
+            // Ball collision with top and bottom
+            if (ball.y <= 0 || ball.y >= GAME_HEIGHT - BALL_SIZE) {
+                ball.dy *= -1;
+                playWallHitSound();
+            }
+
+            // Ball collision with paddles
+            if (
+                (ball.x <= paddleA.x + PADDLE_WIDTH && ball.y + BALL_SIZE >= paddleA.y && ball.y <= paddleA.y + PADDLE_HEIGHT) ||
+                (ball.x + BALL_SIZE >= paddleB.x && ball.y + BALL_SIZE >= paddleB.y && ball.y <= paddleB.y + PADDLE_HEIGHT)
+            ) {
+                ball.dx *= -1;
+                playPaddleHitSound();
+            }
+
+            // Score points
+            if (ball.x <= 0) {
+                scoreB++;
+                resetBall();
+            } else if (ball.x >= GAME_WIDTH - BALL_SIZE) {
+                scoreA++;
+                resetBall();
+            }
+        }
+
+        function resetBall() {
+            ball.x = GAME_WIDTH / 2;
+            ball.y = GAME_HEIGHT / 2;
+            ball.dx = BALL_SPEED * (Math.random() > 0.5 ? 1 : -1);
+            ball.dy = BALL_SPEED * (Math.random() > 0.5 ? 1 : -1);
+        }
+
+        function draw() {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+            ctx.fillStyle = '#fff';
+            drawPaddle(paddleA.x, paddleA.y);
+            drawPaddle(paddleB.x, paddleB.y);
+            drawBall(ball.x, ball.y);
+            drawScore();
+            drawDottedLine();
+        }
+
+        const keys = {};
+
+        window.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            if (e.code === 'Space') {
+                audioContext.resume();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+
+        let lastTime = 0;
+        const targetFPS = 60;
+        const frameDelay = 1000 / targetFPS;
+
+        function gameLoop(currentTime) {
+            requestAnimationFrame(gameLoop);
+
+            const deltaTime = currentTime - lastTime;
+
+            if (deltaTime >= frameDelay) {
+                lastTime = currentTime - (deltaTime % frameDelay);
+                update();
+                draw();
+            }
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>
